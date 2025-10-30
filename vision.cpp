@@ -100,8 +100,8 @@ void vision_loop()
         else if (VisionTaskState == State::SearchLaneChangeMarker)
         {
             DetectLaneChangeSign(frame_clone);
-            //这个函数进入10秒倒计时，随后通知t_control进程"ReStart",使得t_control进程重新发车
-            //但是这个函数需要在这10秒内，识别斑马线后面的转向标志，并更新全局变量lane_change_direction的值
+            //这个函数进入3秒倒计时，随后通知t_control进程"ReStart",使得t_control进程重新发车
+            //但是这个函数需要在这3秒内，识别斑马线后面的转向标志，并更新全局变量lane_change_direction的值
             //全局变量lane_change_direction的值可以是宏定义LANE_CHANGE_NONE，LANE_CHANGE_LEFT，LANE_CHANGE_RIGHT
             //10秒结束后，切换到下一个状态LaneChange
         }
@@ -625,6 +625,7 @@ void DetectLaneChangeSign(const cv::Mat& frame_clone)
             std::cout << "Final Right" << std::endl;
             lane_change_direction.store(LANE_CHANGE_RIGHT);
         }
+        send_message("ReStart");
         VisionTaskState = State::LaneChange;
     }
 }
