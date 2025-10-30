@@ -26,6 +26,8 @@ std::mutex g_results_mutex;
 
 //用State定义VisionTaskState，用于表示视觉处理状态
 State VisionTaskState = State::BlueBarrier;
+//定义锥桶任务信息管理变量
+ConeInfo ConeInformation;
 //定义斑马线任务信息管理变量
 ZebraInfo ZebraInformation;
 //定义转向标志识别任务信息管理变量
@@ -56,31 +58,31 @@ void vision_loop()
 		}
 		else if(VisionTaskState == State::ToBlueCone)
 		{
-            //updateTargetRoute(frame_clone);
-            //-------测试--------
+            updateTargetRoute(frame_clone);
             IMfr.fetch_add(1);//帧率计数
-            std::tuple<double, cv::Vec4f, cv::Vec4f> res = DetectLeftRightLines(frame_clone);
-            double error;
-            cv::Vec4f left_line_fit, right_line_fit;
-            std::tie(error, left_line_fit, right_line_fit) = res;
-            lane_error.store(error);
-            cv::Mat img = cv::Mat::zeros(96, 320, CV_8UC3);
-            drawFitLine(img, left_line_fit, cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
-            drawFitLine(img, right_line_fit, cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
-            //绘制中点
-            cv::Point target_point(error+160, 60);
-            cv::circle(img, target_point, 3, cv::Scalar(255), -1);
-            //绘制目标中点
-            cv::Point now_point(160, 60);
-            cv::circle(img, now_point, 4, cv::Scalar(255), -1);
-            // --- 新增：推送帧到队列 ---
-            if (!allfinishflag.load())
-            {
-                g_frame_queue.push(img);
-            }
-            // ------------------------
-            std::lock_guard<std::mutex> lock(g_results_mutex);
-            g_results.push_back({ error, left_line_fit, right_line_fit });
+            //-------测试--------
+            //std::tuple<double, cv::Vec4f, cv::Vec4f> res = DetectLeftRightLines(frame_clone);
+            //double error;
+            //cv::Vec4f left_line_fit, right_line_fit;
+            //std::tie(error, left_line_fit, right_line_fit) = res;
+            //lane_error.store(error);
+            //cv::Mat img = cv::Mat::zeros(96, 320, CV_8UC3);
+            //drawFitLine(img, left_line_fit, cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
+            //drawFitLine(img, right_line_fit, cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
+            ////绘制中点
+            //cv::Point target_point(error+160, 60);
+            //cv::circle(img, target_point, 3, cv::Scalar(255), -1);
+            ////绘制目标中点
+            //cv::Point now_point(160, 60);
+            //cv::circle(img, now_point, 4, cv::Scalar(255), -1);
+            //// --- 新增：推送帧到队列 ---
+            //if (!allfinishflag.load())
+            //{
+            //    g_frame_queue.push(img);
+            //}
+            //// ------------------------
+            //std::lock_guard<std::mutex> lock(g_results_mutex);
+            //g_results.push_back({ error, left_line_fit, right_line_fit });
             //--------------------
             //此时车辆已经发车，在路上会遇到一个锥桶，
             //在遇到锥桶之前，处理图像，识别跑道，把与中点的误差更新到全局变量lane_error中去
@@ -224,23 +226,219 @@ void FindBlueBarrier(cv::Mat frame_clone, BlueBarrierInit& config)
 
 }
 //>>>>>规划绕行锥桶路线<<<<<<<
-void updateTargetRoute(const cv::Mat& frame_clone) 
+void updateTargetRoute(const cv::Mat& frame_clone)
 {
-    /**
-     * 功能需求：
-     * - 在遇到锥桶之前，处理图像，识别跑道，把与中点的误差更新到全局变量lane_error中去
-     * - 在遇到锥桶之后，选择从左边或者右边绕过去，把与规划好的路线的误差更新到lane_error中去
-     * - 当绕过锥桶之后，切换到下一个状态ToZebraCrossing
-     *
-     * 注意事项：
-     *  - lane_error 为线程共用原子变量，读写是线程安全的
-     *  - 斑马线检测方法可由后续开发者自由选择（图像处理或深度学习）
-     *
-     * 传入参数:
-     * - 摄像机捕捉的一帧图像的克隆frame_clone
-     * 
-     * 返回值:无
-     */
+    // 锥桶与循迹共用,处理得到cropped_image
+    cv::Rect roi_rect(0, (frame_clone.rows / 2 - 90 + 60), frame_clone.cols, (frame_clone.rows / 2.5));
+    cv::Mat cropped_image = frame_clone(roi_rect).clone();
+    cv::resize(cropped_image, cropped_image, cv::Size(), 0.5, 0.5);
+    gammaCorrection(cropped_image, cropped_image); // 假设 gammaCorrection 是你定义在别处的函数
+
+    // 循迹
+    std::tuple<double, cv::Vec4f, cv::Vec4f, double, double> res = DetectLeftRightLinesForCone(cropped_image);
+    double error, left_line_fitX, right_line_fitX;
+    cv::Vec4f left_line_fit, right_line_fit;
+    std::tie(error, left_line_fit, right_line_fit, left_line_fitX, right_line_fitX) = res;
+    //lane_error.store(error);
+    // 回传数据
+    // std::lock_guard<std::mutex> lock(g_results_mutex);
+    // g_results.push_back({ error, left_line_fit, right_line_fit });
+
+    // 锥桶图像预先处理，生成mask_cone
+    cv::Mat hsv_image;
+    cv::cvtColor(cropped_image, hsv_image, cv::COLOR_BGR2HSV);
+    cv::Mat mask_cone;
+    if (ConeInformation.isbluerunway == true) {
+        cv::Mat Red1, Red2;
+        cv::Scalar scalarl1 = cv::Scalar(0, 43, 46);
+        cv::Scalar scalarl2 = cv::Scalar(146, 43, 46);
+        cv::Scalar scalarH1 = cv::Scalar(10, 255, 255);
+        cv::Scalar scalarH2 = cv::Scalar(180, 255, 255);
+        cv::inRange(hsv_image, scalarl1, scalarH1, Red1);
+        cv::inRange(hsv_image, scalarl2, scalarH2, Red2);
+        mask_cone = Red1 | Red2;
+    }
+    else {
+        cv::Scalar scalarL = cv::Scalar(95, 65, 65);   //  Scalar(100, 43, 46);  Scalar(124, 255, 255);
+        cv::Scalar scalarH = cv::Scalar(125, 255, 255);
+        cv::inRange(hsv_image, scalarL, scalarH, mask_cone);
+    }
+
+
+    cv::Mat kernel = cv::Mat::ones(3, 3, cv::CV_8U);
+    cv::erode(mask_cone, mask_cone, kernel, cv::Point(-1, -1), 1);
+    cv::dilate(mask_cone, mask_cone, kernel, cv::Point(-1, -1), 1);
+    //
+    std::pair<int, int> cone_left_right = dect_cone(mask_cone);//dect_cone既会修改结构体储存信息ConeInformation也会返回值
+    int cone_left = cone_left_right.first;
+    int cone_right = cone_left_right.second;
+    //逻辑部分
+    if (ConeInformation.findcone == true) {
+        error = (left_line_fitX + cone_left) / 2 - 160;
+        lane_error.store(error);
+    }
+    else {
+        lane_error.store(error);
+    }
+    if (ConeInformation.detection_over == true) {
+        VisionTaskState = State::ToZebraCrossing;
+    }
+}
+std::pair<double, double>  calcAverageX_left_right(
+    const cv::Vec4f& left_line,
+    const cv::Vec4f& right_line,
+    bool has_left,
+    bool has_right,
+    double y1,
+    double y2)
+{
+    auto calcX = [](const cv::Vec4f& line, double y) {
+        double vx = line[0], vy = line[1];
+        double x0 = line[2], y0 = line[3];
+        return x0 + vx / vy * (y - y0);
+        };
+
+    // 左线的平均x
+    double xavg_left;
+    if (has_left) {
+        double x1 = calcX(left_line, y1);
+        double x2 = calcX(left_line, y2);
+        xavg_left = (x1 + x2) / 2.0;
+    }
+    else {
+        xavg_left = 0.0; // 左边界
+    }
+
+    // 右线的平均x
+    double xavg_right;
+    if (has_right) {
+        double x1 = calcX(right_line, y1);
+        double x2 = calcX(right_line, y2);
+        xavg_right = (x1 + x2) / 2.0;
+    }
+    else {
+        xavg_right = 320.0; // 右边界
+    }
+
+    // 返回整体平均横坐标
+    return std::make_pair(xavg_left, xavg_right);
+}
+std::tuple<double, cv::Vec4f, cv::Vec4f, double, double> DetectLeftRightLinesForCone(cv::Mat& cropped_image)
+{
+    cv::Mat gray_image;
+    cv::cvtColor(cropped_image, gray_image, cv::COLOR_BGR2GRAY);
+
+    cv::Mat blur;
+    cv::bilateralFilter(gray_image, blur, 7, 60, 60);
+    cv::Mat gaussian_blur;
+    cv::GaussianBlur(blur, gaussian_blur, cv::Size(5, 5), 30);
+
+    cv::Mat ca;
+    cv::Canny(gaussian_blur, ca, 30, 50);
+
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2, 2));
+    cv::Mat dilated_ca;
+    cv::dilate(ca, dilated_ca, kernel, cv::Point(-1, -1), 2);
+
+    std::vector<cv::Vec4i> lines;
+    cv::HoughLinesP(dilated_ca, lines, 1, cv::CV_PI / 180, 50, 25, 10);
+
+    std::vector<cv::Vec4i> right_lines;
+    std::vector<cv::Vec4i> left_lines;
+    for (std::size_t i = 0; i < lines.size(); ++i)
+    {
+        cv::Vec4i line = lines[i];
+        double angle_rad = std::atan2(line[3] - line[1], line[2] - line[0]);
+        double angle_deg = angle_rad * 180.0 / cv::CV_PI;
+
+        if (angle_deg < 0)  angle_deg += 180;  // 把角度范围调整到 [0,180)
+        // 根据角度筛选左右线
+        if (angle_deg >= 18 && angle_deg <= 89)
+        {
+            right_lines.push_back(line);
+        }
+        else if (angle_deg >= 91 && angle_deg <= 175)
+        {
+            left_lines.push_back(line);
+        }
+    }
+    //最小二乘法
+    auto fitMainLine = [](const std::vector<cv::Vec4i>& lines, cv::Vec4f& line_out) -> bool {
+        if (lines.empty()) return false;
+        std::vector<cv::Point2f> pts;
+        for (auto& l : lines) {
+            pts.emplace_back(l[0], l[1]);
+            pts.emplace_back(l[2], l[3]);
+        }
+        if (pts.size() < 2) return false;
+        cv::fitLine(pts, line_out, cv::DIST_L2, 0, 0.01, 0.01);
+        return true;
+        };
+
+    cv::Vec4f left_line_fit, right_line_fit;
+    bool has_left = fitMainLine(left_lines, left_line_fit);
+    bool has_right = fitMainLine(right_lines, right_line_fit);
+
+
+    //求左右线的平均中点，和中点
+    std::pair<double, double> avgX_left_right = calcAverageX_left_right(left_line_fit, right_line_fit, has_left, has_right, 30, 60);
+    double left_line_fitX = avgX_left_right.first;
+    double right_line_fitX = avgX_left_right.second;
+    double avgX = (left_line_fitX + right_line_fitX) / 2;
+
+    //计算误差
+    double error = avgX - 160;
+    return std::make_tuple(error, left_line_fit, right_line_fit, left_line_fitX, right_line_fitX);
+}
+bool Contour_Area(const std::vector<cv::Point>& contour1, const std::vector<cv::Point>& contour2)
+{
+    return cv::contourArea(contour1) < cv::contourArea(contour2);
+}
+std::pair<int, int> dect_cone(cv::Mat& mask_cone)
+{
+    std::vector<std::vector<cv::Point>> contours;
+    std::vector<std::vector<cv::Point>> Cones;
+    cv::findContours(mask_cone, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
+
+    for (const auto& cnt : contours) {
+        cv::Rect rect = cv::boundingRect(cnt);
+        int x = rect.x;
+        int w = rect.width;
+        int h = rect.height;
+
+        // 过滤条件：
+        // 1. 高度比宽度稍微大一点，但差值不超过 10 像素
+        // 2. 面积大于等于 50 像素
+        // 3. 物体必须出现在画面中间区域 (x 在 90~225 之间)
+        if ((h - w) <= 10 && (h - w) >= 0 && w * h >= 50 && x >= 90 && x <= 225) {
+            Cones.emplace_back(cnt);
+        }
+    }
+
+    if (!Cones.empty()) {
+        auto cone = *std::max_element(Cones.begin(), Cones.end(), Contour_Area);
+        cv::Rect rect = cv::boundingRect(cone);
+
+        int x = rect.x;
+        int w = rect.width;
+
+        ConeInformation.cone_left_x = x;
+        ConeInformation.cone_right_x = x + w;
+        ConeInformation.findcone = true;
+
+        return std::make_pair(x, x + w);
+    }
+    else {
+        if (ConeInformation.findcone == false)
+        {
+            ConeInformation.detection_over = false;
+        }
+        else
+        {
+            ConeInformation.detection_over = true;
+        }
+        return std::make_pair(-1, -1);
+    }
 }
 //辅助函数
 

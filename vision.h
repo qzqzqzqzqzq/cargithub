@@ -33,6 +33,14 @@ struct BlueBarrierInit
     // 状态变量：当前是否检测到蓝色挡板（默认false）
     bool is_bluebarrier_present = false;
 };
+//用于储存锥桶任务信息
+struct ConeInfo {
+bool isbluerunway = true; //用于选择跑道颜色
+bool findcone = false;        // 是否检测到锥桶
+bool detection_over = false; // 是否检测结束
+int cone_left_x = 0;              // 锥桶左边界
+int cone_right_x = 0;             // 锥桶右边界
+};
 //用于储存斑马线任务信息
 struct ZebraInfo {
     // === 逻辑区 ===
@@ -76,6 +84,7 @@ struct FrameData {
 
 extern State VisionTaskState;
 extern BlueBarrierInit BlueBarrierConfig;
+extern ConeInfo ConeInformation;
 extern ZebraInfo ZebraInformation;
 extern ArrowInfo ArrowInformation;
 extern std::vector<FrameData> g_results;
@@ -84,8 +93,19 @@ extern std::mutex g_results_mutex;
 void vision_loop();
 void FindBlueBarrier(cv::Mat frame_clone, BlueBarrierInit& config);
 void isBlueBarrierRemoved(cv::Mat frame_clone);
-
+//ToBlueCone任务主函数
 void updateTargetRoute(const cv::Mat& frame_clone);
+//ToBlueCone任务辅助函数
+std::pair<double, double>  calcAverageX_left_right(
+    const cv::Vec4f& left_line,
+    const cv::Vec4f& right_line,
+    bool has_left,
+    bool has_right,
+    double y1,
+    double y2);
+std::tuple<double, cv::Vec4f, cv::Vec4f, double, double> DetectLeftRightLinesForCone(cv::Mat& cropped_image);
+bool Contour_Area(const std::vector<cv::Point>& contour1, const std::vector<cv::Point>& contour2);
+std::pair<int, int> dect_cone(cv::Mat& mask_cone);
 //ToZebraCrossing任务主函数
 void searchZebraCrossing(const cv::Mat& frame_clone);
 //ToZebraCrossing任务辅助函数
