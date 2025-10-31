@@ -7,3 +7,4 @@
 
 void motor_init();
 void motor_speed(int spd);
+void motor_break();

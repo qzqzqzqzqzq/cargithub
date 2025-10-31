@@ -30,7 +30,7 @@ void control_loop()
         }
         else if (receive_message() == "ReStop")
         {
-            motor_speed(STOP_SPEED);
+            motor_break();
             //最终停车
         }
         //每循环一次控制一次舵机方向，建议加个延时避免循环过快
@@ -71,6 +71,9 @@ void controlServoWithPID()
 //>>>>>>>>>发现斑马线停车并播报<<<<<<<<
 void StopAndAnnounce()
 {
+    motor_break();
+    playRecordedVoice();
+    while (receive_message() == "ReStart");//防止播报的太快
     //这个函数让小车停车并且播放录制好的音频
     //注意要让这个函数阻隔在这里10秒，以免反复执行这个函数，或者以其他方式实现也行
 }

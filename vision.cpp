@@ -265,7 +265,7 @@ void updateTargetRoute(const cv::Mat& frame_clone)
     }
 
 
-    cv::Mat kernel = cv::Mat::ones(3, 3, cv::CV_8U);
+    cv::Mat kernel = cv::Mat::ones(3, 3, CV_8U);
     cv::erode(mask_cone, mask_cone, kernel, cv::Point(-1, -1), 1);
     cv::dilate(mask_cone, mask_cone, kernel, cv::Point(-1, -1), 1);
     //
@@ -341,7 +341,7 @@ std::tuple<double, cv::Vec4f, cv::Vec4f, double, double> DetectLeftRightLinesFor
     cv::dilate(ca, dilated_ca, kernel, cv::Point(-1, -1), 2);
 
     std::vector<cv::Vec4i> lines;
-    cv::HoughLinesP(dilated_ca, lines, 1, cv::CV_PI / 180, 50, 25, 10);
+    cv::HoughLinesP(dilated_ca, lines, 1, CV_PI / 180, 50, 25, 10);
 
     std::vector<cv::Vec4i> right_lines;
     std::vector<cv::Vec4i> left_lines;
@@ -349,7 +349,7 @@ std::tuple<double, cv::Vec4f, cv::Vec4f, double, double> DetectLeftRightLinesFor
     {
         cv::Vec4i line = lines[i];
         double angle_rad = std::atan2(line[3] - line[1], line[2] - line[0]);
-        double angle_deg = angle_rad * 180.0 / cv::CV_PI;
+        double angle_deg = angle_rad * 180.0 / CV_PI;
 
         if (angle_deg < 0)  angle_deg += 180;  // 把角度范围调整到 [0,180)
         // 根据角度筛选左右线

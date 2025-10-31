@@ -27,3 +27,13 @@ void motor_speed(int spd) {
     pca_set_servo_pulse(MOTOR_PCA9685_CANNEL, spd);
 
 }
+//刹车函数
+void motor_break() {
+    motor_speed(1400);
+    std::cout << "[INFO] motor_break(): The car is braking..." << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    std::cout << "[INFO] motor_break(): Returning to ESC midpoint (1500)..." << std::endl;
+    motor_speed(1500);
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    std::cout << "[INFO] motor_break(): Braking sequence completed..." << std::endl;
+}
