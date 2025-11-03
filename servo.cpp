@@ -1,6 +1,6 @@
 ﻿#include "servo.h"
 #include <iostream>
-#include "pca9685_driver.h"
+#include <pigpio.h>
 
 // === 储存初始化数据的变量 ===
 int g_middle_angle = 105;
@@ -22,7 +22,7 @@ void servo_init(int middle_angle, int left_angle_limit, int right_angle_limit) {
 
     // GPIO12 对应舵机控制信号输出
     int pulse = angleToPulse(g_middle_angle);
-    pca_set_servo_pulse(SERVO_PCA9685_CANNEL, pulse);
+    gpioServo(12, pulse);
 
     std::cout << "[SERVO] Servo is initialized:" << std::endl;
     std::cout << "  MiddleAngle = " << g_middle_angle << "°" << std::endl;
@@ -42,5 +42,5 @@ void servo_control(int angle) {
     }
     // 转换为 PWM 脉宽并输出
     int pulse = angleToPulse(angle);
-    pca_set_servo_pulse(SERVO_PCA9685_CANNEL, pulse);
+    gpioServo(12, pulse);
 }

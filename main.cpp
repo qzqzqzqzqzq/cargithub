@@ -8,6 +8,7 @@
 #include "motor.h"
 #include "servo.h"
 #include "pid.h"
+#include "pca9685_driver.h"
 
 #include "timer.h"
 #include "message.h"
@@ -84,11 +85,17 @@ void signal_handler(int signum) {
 }
 // ------------------
 int main() {
-    signal(SIGINT, signal_handler);    // 注册信号处理函数：捕获 Ctrl+C
     double kp, ki, kd;
-    std::cout << "请输入 PID 参数 (Kp Ki Kd): ";
+    std::cout << "Please enter PID parameters (Kp Ki Kd): ";
     std::cin >> kp >> ki >> kd;
     //初始化
+    gpio_init();
+    signal(SIGINT, signal_handler);    // 注册信号处理函数：捕获 Ctrl+C
+    if (!pca_init()) {
+        std::cerr << "Failed to initialize PCA9685 driver!" << std::endl;
+        return 1;
+    }
+    pca_set_pwm_freq(50.0);
     motor_init();
     servo_init(105, 90, 120);
     pid_init(kp, ki, kd, 15);
@@ -129,6 +136,8 @@ int main() {
     // ------------------
 
     std::cout << "[INFO] All threads joined. Releasing resources..." << std::endl;
+    pca_close();
+    gpio_release();
     SaveResultsToCSV("lane_result.csv");
     std::cout << "[INFO] Program finished." << std::endl;
     return 0;

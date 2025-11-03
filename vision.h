@@ -40,6 +40,11 @@ bool findcone = false;        // 是否检测到锥桶
 bool detection_over = false; // 是否检测结束
 int cone_left_x = 0;              // 锥桶左边界
 int cone_right_x = 0;             // 锥桶右边界
+//计数器
+int consecutive_detected_cone = 0;
+int consecutive_missed_cone = 0;
+const int detect_threshold_frames_cone = 3;
+const int miss_threshold_frames_cone = 3;
 };
 //用于储存斑马线任务信息
 struct ZebraInfo {

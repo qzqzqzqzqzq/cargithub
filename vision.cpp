@@ -424,16 +424,23 @@ std::pair<int, int> dect_cone(cv::Mat& mask_cone)
 
         ConeInformation.cone_left_x = x;
         ConeInformation.cone_right_x = x + w;
-        ConeInformation.findcone = true;
+        ConeInformation.consecutive_detected_cone++;
+        ConeInformation.consecutive_missed_cone = 0;
+
+        // 只有达到阈值后才将 findcone 置为 true
+        if (ConeInformation.consecutive_detected_cone >= ConeInformation.detect_threshold_frames_cone) {
+            ConeInformation.findcone = true;
+        }
 
         return std::make_pair(x, x + w);
     }
     else {
-        if (ConeInformation.findcone == false)
-        {
-            ConeInformation.detection_over = false;
-        }
-        else
+        ConeInformation.consecutive_missed_cone++;
+        ConeInformation.consecutive_detected_cone = 0;
+
+        // 只有在之前已发现锥桶且连续丢失达到阈值时，才判定结束
+        if (ConeInformation.findcone == true &&
+            ConeInformation.consecutive_missed_cone >= ConeInformation.miss_threshold_frames_cone)
         {
             ConeInformation.detection_over = true;
         }
